@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>법인카드 사용내역 대시보드 V5</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #E8EFFF 0%, #F0F5FF 100%);
+            padding: 20px;
+            color: #333;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 { color: #5085FF; margin-bottom: 30px; font-size: 32px; text-align: center; }
+        .file-upload {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(80, 133, 255, 0.1);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .file-upload input { padding: 10px; font-size: 15px; }
+        .file-upload span { margin-left: 15px; color: #666; }
+        .filters {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(80, 133, 255, 0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        .filter-group { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .filter-group label { font-weight: 600; color: #5085FF; font-size: 14px; }
+        select {
+            padding: 12px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 12px;
+            font-size: 15px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        select:hover { border-color: #5085FF; }
+        select:focus { outline: none; border-color: #5085FF; box-shadow: 0 0 0 3px rgba(80, 133, 255, 0.1); }
+        .middle-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .chart-card {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(80, 133, 255, 0.1);
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-title { font-size: 18px; font-weight: bold; color: #5085FF; margin-bottom: 20px; text-align: center; flex-shrink: 0; }
+        .pie-container { flex: 1; position: relative; min-height: 380px; }
+        #pieChart { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
+        .small-items { margin-top: 10px; padding: 10px; background: #F9FAFB; border-radius: 8px; font-size: 12px; }
+        .small-items-title { font-weight: 600; color: #5085FF; margin-bottom: 8px; }
+        .small-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #E5E7EB; }
+        .small-item:last-child { border-bottom: none; }
+        .small-item-label { display: flex; align-items: center; gap: 8px; }
+        .small-item-color { width: 12px; height: 12px; border-radius: 3px; }
+        .table-container {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(80, 133, 255, 0.1);
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            background: #5085FF;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            font-size: 13px;
+        }
+        td { padding: 10px 12px; border-bottom: 1px solid #E5E7EB; font-size: 13px; }
+        tr:hover { background: #F9FAFB; }
+        .amount { text-align: right; font-weight: 600; }
+        .amount.negative { color: #EF4444; }
+        .amount.positive { color: #10B981; }
+        .amount-cell { text-align: right; font-weight: 600; color: #333; }
+        .diff-positive { color: #10B981; }
+        .diff-negative { color: #EF4444; }
+        .no-data { text-align: center; padding: 40px; color: #999; font-size: 16px; }
+        .category-table { width: 100%; border-collapse: collapse; }
+        .category-table th { background: #5085FF; color: white; padding: 12px; text-align: left; font-weight: 600; font-size: 13px; }
+        .category-table td { padding: 12px; border-bottom: 1px solid #E5E7EB; font-size: 13px; }
+        .category-table tr:hover { background: #F9FAFB; }
+        .category-table tfoot td { background: #F3F4F6; font-weight: bold; color: #5085FF; }
+        .sub-row { background: #F9FAFB; }
+        .sub-row td:first-child { padding-left: 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💳 법인카드 사용내역 대시보드</h1>
+        
+        <div class="file-upload">
+            <input type="file" id="excelFile" accept=".xlsx">
+            <span>엑셀 파일을 선택해주세요</span>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="monthFilter">월</label>
+                <select id="monthFilter"><option value="">전체</option></select>
+            </div>
+        </div>
+
+        <div class="middle-section">
+            <div class="chart-card">
+                <div class="chart-title">대분류별 사용금액 현황</div>
+                <div id="categoryTableContainer"></div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">대분류별 사용비율 현황</div>
+                <div class="pie-container"><canvas id="pieChart"></canvas></div>
+                <div id="smallItemsContainer"></div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <h2 style="margin-bottom: 20px; color: #5085FF;">법인카드 사용내역 계정별 상세</h2>
+            <div id="detailAccountTable"></div>
+        </div>
+
+        <div class="table-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #5085FF; margin: 0;">상세 사용내역</h2>
+                <input type="text" id="tableFilter" placeholder="검색... (G/L계정명, BP명)" style="padding: 10px; width: 300px; border: 2px solid #E5E7EB; border-radius: 8px; font-size: 14px;">
+            </div>
+            <div id="tableContent"><div class="no-data">데이터를 불러오는 중...</div></div>
+        </div>
+    </div>
+    <script>
+        let allData = [];
+        let pieChartInstance = null;
+        let monthList = [];
+        
+        const categoryMapping = {
+            '복리후생비': ['복리후생비', '교육훈련비'],
+            '접대비': ['접대비'],
+            '교통비': ['여비교통비'],
+            '업무경비': ['차량유지비', '지급수수료', '소모품비', '보험료', '수선비', '광고선전비', '운반비', '판매촉진비', '자산구매', '도서인쇄비', '연간사용료', '외주용역비'],
+            '선급금': ['미지급금', '통합법인결산임시계정'],
+            '통신비': ['통신비']
+        };
+
+        function getCategory(glAccount) {
+            if (!glAccount) return '기타';
+            const account = String(glAccount);
+            for (const [category, keywords] of Object.entries(categoryMapping)) {
+                if (keywords.some(keyword => account.includes(keyword))) {
+                    return category;
+                }
+            }
+            return '기타';
+        }
+
+        function formatCurrency(value) {
+            return '₩' + Math.round(value).toLocaleString();
+        }
+
+        function formatDate(date) {
+            if (!date) return '-';
+            const str = String(date).replace(/[^0-9]/g, '');
+            if (str.length === 8) {
+                return `${str.substring(0,4)}-${str.substring(4,6)}-${str.substring(6,8)}`;
+            }
+            return str;
+        }
+
+        document.getElementById('excelFile').addEventListener('change', loadExcelData);
+
+        function loadExcelData(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' });
+                
+                allData = jsonData.slice(1).map(row => {
+                    let approvalDate = row[5];
+                    if (typeof approvalDate === 'number' && approvalDate > 40000) {
+                        const excelEpoch = new Date(1899, 11, 30);
+                        const jsDate = new Date(excelEpoch.getTime() + approvalDate * 86400000);
+                        const year = jsDate.getFullYear();
+                        const month = String(jsDate.getMonth() + 1).padStart(2, '0');
+                        const day = String(jsDate.getDate()).padStart(2, '0');
+                        approvalDate = year + month + day;
+                    }
+                    return {
+                        approvalDate: approvalDate,
+                        amount: parseFloat(row[7]) || 0,
+                        merchant: row[12],
+                        bp: row[18],
+                        glAccount: row[27],
+                        costCenter: row[29],
+                        description: row[34],
+                        category: getCategory(row[27])
+                    };
+                }).filter(row => {
+                    if (!row.approvalDate && !row.amount && !row.merchant) return false;
+                    const dateStr = String(row.approvalDate).replace(/[^0-9]/g, '');
+                    if (dateStr === '20250731') return false;
+                    return true;
+                });
+
+
+
+                const monthSet = new Set();
+                allData.forEach(row => {
+                    const dateStr = String(row.approvalDate).replace(/[^0-9]/g, '');
+                    if (dateStr.length >= 6) monthSet.add(dateStr.substring(0, 6));
+                });
+                monthList = [...monthSet].sort().slice(-2);
+                
+                const monthFilter = document.getElementById('monthFilter');
+                monthFilter.innerHTML = '<option value="">전체</option>';
+                monthList.forEach(month => {
+                    const option = document.createElement('option');
+                    option.value = month;
+                    option.textContent = `${month.substring(0,4)}년 ${month.substring(4,6)}월`;
+                    monthFilter.appendChild(option);
+                });
+
+                renderDashboard();
+                document.getElementById('monthFilter').addEventListener('change', renderDashboard);
+                document.getElementById('tableFilter').addEventListener('input', renderDetailTable);
+                
+                document.querySelector('.file-upload span').textContent = `✓ ${file.name} 로드 완료 (${allData.length}건)`;
+                document.querySelector('.file-upload span').style.color = '#10B981';
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderDashboard() {
+            const monthFilter = document.getElementById('monthFilter').value;
+            
+            if (monthFilter === '') {
+                renderComparisonTable();
+                renderPieChart('all');
+                renderDetailAccountTable();
+            } else {
+                renderSingleMonthTable(monthFilter);
+                renderPieChart(monthFilter);
+                renderSingleMonthDetailAccountTable(monthFilter);
+            }
+            
+            renderDetailTable();
+        }
+
+        function renderComparisonTable() {
+            if (monthList.length < 2) return;
+            const prevMonth = monthList[0];
+            const currMonth = monthList[1];
+            const prevData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === prevMonth);
+            const currData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === currMonth);
+            const prevSum = {}, currSum = {}, prevAccountSum = {}, currAccountSum = {};
+            prevData.forEach(row => {
+                if (row.category === '기타') return;
+                prevSum[row.category] = (prevSum[row.category] || 0) + row.amount;
+                const key = `${row.category}|${row.glAccount}`;
+                prevAccountSum[key] = (prevAccountSum[key] || 0) + row.amount;
+            });
+            currData.forEach(row => {
+                if (row.category === '기타') return;
+                currSum[row.category] = (currSum[row.category] || 0) + row.amount;
+                const key = `${row.category}|${row.glAccount}`;
+                currAccountSum[key] = (currAccountSum[key] || 0) + row.amount;
+            });
+            const allCategories = new Set([...Object.keys(prevSum), ...Object.keys(currSum)]);
+            const categoryData = Array.from(allCategories).map(cat => {
+                const accounts = [...new Set([...Object.keys(prevAccountSum), ...Object.keys(currAccountSum)])].filter(key => key.startsWith(cat + '|'));
+                let maxDiffAccount = null;
+                let maxDiff = 0;
+                accounts.forEach(key => {
+                    const diff = Math.abs((currAccountSum[key] || 0) - (prevAccountSum[key] || 0));
+                    if (diff > maxDiff) {
+                        maxDiff = diff;
+                        maxDiffAccount = { name: key.split('|')[1], diff: (currAccountSum[key] || 0) - (prevAccountSum[key] || 0) };
+                    }
+                });
+                return {
+                    category: cat,
+                    prev: prevSum[cat] || 0,
+                    curr: currSum[cat] || 0,
+                    diff: (currSum[cat] || 0) - (prevSum[cat] || 0),
+                    maxDiffAccount: maxDiffAccount
+                };
+            }).sort((a, b) => b.curr - a.curr);
+            const totalPrev = categoryData.reduce((sum, item) => sum + item.prev, 0);
+            const totalCurr = categoryData.reduce((sum, item) => sum + item.curr, 0);
+            const totalDiff = totalCurr - totalPrev;
+            let html = '<table class="category-table"><thead><tr><th>대분류</th><th style="text-align: right;">전월합계</th><th style="text-align: right;">당월합계</th><th style="text-align: right;">차액</th><th>비고</th></tr></thead><tbody>';
+            categoryData.forEach(item => {
+                const diffClass = item.diff >= 0 ? 'diff-positive' : 'diff-negative';
+                let remark = '-';
+                if (item.maxDiffAccount) {
+                    const diffHundredMillion = item.maxDiffAccount.diff / 10000000;
+                    const formattedAmount = diffHundredMillion >= 1 ? Math.round(diffHundredMillion) : diffHundredMillion.toFixed(2);
+                    remark = `${item.maxDiffAccount.name} / ${formattedAmount}백만원`;
+                }
+                html += `<tr><td>${item.category}</td><td class="amount-cell">${formatCurrency(item.prev)}</td><td class="amount-cell">${formatCurrency(item.curr)}</td><td class="amount-cell ${diffClass}">${formatCurrency(item.diff)}</td><td>${remark}</td></tr>`;
+            });
+            const totalDiffClass = totalDiff >= 0 ? 'diff-positive' : 'diff-negative';
+            html += `</tbody><tfoot><tr><td>합계</td><td class="amount-cell">${formatCurrency(totalPrev)}</td><td class="amount-cell">${formatCurrency(totalCurr)}</td><td class="amount-cell ${totalDiffClass}">${formatCurrency(totalDiff)}</td><td>-</td></tr></tfoot></table>`;
+            document.getElementById('categoryTableContainer').innerHTML = html;
+        }
+
+        function renderSingleMonthTable(targetMonth) {
+            const monthData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === targetMonth);
+            const categorySum = {};
+            monthData.forEach(row => { categorySum[row.category] = (categorySum[row.category] || 0) + row.amount; });
+            const sortedCategories = Object.entries(categorySum).filter(([cat]) => cat !== '기타').sort((a, b) => b[1] - a[1]);
+            const total = sortedCategories.reduce((sum, [, amount]) => sum + amount, 0);
+            let html = '<table class="category-table"><thead><tr><th>대분류</th><th style="text-align: right;">사용금액</th></tr></thead><tbody>';
+            sortedCategories.forEach(([cat, amount]) => { html += `<tr><td>${cat}</td><td class="amount-cell">${formatCurrency(amount)}</td></tr>`; });
+            html += `</tbody><tfoot><tr><td>합계</td><td class="amount-cell">${formatCurrency(total)}</td></tr></tfoot></table>`;
+            document.getElementById('categoryTableContainer').innerHTML = html;
+        }
+
+        function renderPieChart(targetMonth) {
+            let monthData = targetMonth === 'all' ? allData : allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === targetMonth);
+            const categorySum = {};
+            monthData.forEach(row => { categorySum[row.category] = (categorySum[row.category] || 0) + row.amount; });
+            const allCategories = Object.entries(categorySum).filter(([cat]) => cat !== '기타').sort((a, b) => b[1] - a[1]);
+            if (allCategories.length === 0) return;
+            const total = allCategories.reduce((sum, [, amount]) => sum + amount, 0);
+            const smallCategoryNames = ['교통비', '통신비'];
+            const sortedCategories = allCategories.filter(([cat]) => !smallCategoryNames.includes(cat));
+            const smallCategories = allCategories.filter(([cat]) => smallCategoryNames.includes(cat));
+            const ctx = document.getElementById('pieChart').getContext('2d');
+            if (pieChartInstance) pieChartInstance.destroy();
+            const colors = ['#5085FF', '#7AA5FF', '#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4'];
+            const colorMap = {};
+            allCategories.forEach(([cat], idx) => { colorMap[cat] = colors[idx % colors.length]; });
+            if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+            pieChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: sortedCategories.map(([cat]) => cat),
+                    datasets: [{ data: sortedCategories.map(([, amount]) => amount), backgroundColor: sortedCategories.map(([cat]) => colorMap[cat]), borderWidth: 2, borderColor: '#fff',
+                        datalabels: { color: '#FFFFFF', font: { weight: 'bold', size: 13 }, anchor: 'center', align: 'center',
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${context.chart.data.labels[context.dataIndex]}\n${percentage}%`;
+                            }
+                        }
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 20, bottom: 20, left: 20, right: 20 } },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(context) {
+                        const label = context.label || ''; const value = formatCurrency(context.parsed);
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((context.parsed / total) * 100).toFixed(1);
+                        return `${label}: ${value} (${percentage}%)`;
+                    }}}}
+                },
+                plugins: [ChartDataLabels]
+            });
+            const smallItemsContainer = document.getElementById('smallItemsContainer');
+            if (smallCategories.length > 0) {
+                let html = '<div class="small-items"><div class="small-items-title">소액 항목 (3% 미만)</div>';
+                smallCategories.forEach(([cat, amount]) => {
+                    const percentage = ((amount / total) * 100).toFixed(1);
+                    html += `<div class="small-item"><div class="small-item-label"><div class="small-item-color" style="background-color: ${colorMap[cat]}"></div><span>${cat}</span></div><span>${percentage}% (${formatCurrency(amount)})</span></div>`;
+                });
+                html += '</div>';
+                smallItemsContainer.innerHTML = html;
+            } else {
+                smallItemsContainer.innerHTML = '';
+            }
+        }
+
+        function renderDetailAccountTable() {
+            if (monthList.length < 2) return;
+            const prevMonth = monthList[0];
+            const currMonth = monthList[1];
+            const prevData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === prevMonth);
+            const currData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === currMonth);
+            
+            const prevCategorySum = {}, currCategorySum = {};
+            const prevAccountSum = {}, currAccountSum = {};
+            
+            prevData.forEach(row => {
+                if (row.category === '기타') return;
+                prevCategorySum[row.category] = (prevCategorySum[row.category] || 0) + row.amount;
+                const key = `${row.category}|${row.glAccount}`;
+                prevAccountSum[key] = (prevAccountSum[key] || 0) + row.amount;
+            });
+            
+            currData.forEach(row => {
+                if (row.category === '기타') return;
+                currCategorySum[row.category] = (currCategorySum[row.category] || 0) + row.amount;
+                const key = `${row.category}|${row.glAccount}`;
+                currAccountSum[key] = (currAccountSum[key] || 0) + row.amount;
+            });
+            
+            const allCategories = [...new Set([...Object.keys(prevCategorySum), ...Object.keys(currCategorySum)])].sort((a, b) => {
+                const amountA = currCategorySum[a] || 0;
+                const amountB = currCategorySum[b] || 0;
+                return amountB - amountA;
+            });
+            const allAccounts = [...new Set([...Object.keys(prevAccountSum), ...Object.keys(currAccountSum)])];
+            
+            let html = '<table class="category-table"><thead><tr><th>계정명</th><th style="text-align: right;">당월합계</th><th style="text-align: right;">당월비율</th><th style="text-align: right;">전월합계</th><th style="text-align: right;">전월비율</th><th style="text-align: right;">차액</th></tr></thead><tbody>';
+            
+            let grandTotalCurr = 0, grandTotalPrev = 0;
+            
+            allCategories.forEach(category => {
+                const categoryAccounts = allAccounts.filter(key => key.startsWith(category + '|')).sort((a, b) => (currAccountSum[b] || 0) - (currAccountSum[a] || 0));
+                
+                const catCurrTotal = currCategorySum[category] || 0;
+                const catPrevTotal = prevCategorySum[category] || 0;
+                const catDiff = catCurrTotal - catPrevTotal;
+                const catCurrRatio = catCurrTotal > 0 ? 100 : 0;
+                const catPrevRatio = catPrevTotal > 0 ? 100 : 0;
+                
+                grandTotalCurr += catCurrTotal;
+                grandTotalPrev += catPrevTotal;
+                
+                const diffClass = catDiff >= 0 ? 'diff-positive' : 'diff-negative';
+                html += `<tr><td><strong>${category}</strong></td><td class="amount-cell"><strong>${formatCurrency(catCurrTotal)}</strong></td><td class="amount-cell"><strong>${catCurrRatio.toFixed(1)}%</strong></td><td class="amount-cell"><strong>${formatCurrency(catPrevTotal)}</strong></td><td class="amount-cell"><strong>${catPrevRatio.toFixed(1)}%</strong></td><td class="amount-cell ${diffClass}"><strong>${formatCurrency(catDiff)}</strong></td></tr>`;
+                
+                categoryAccounts.forEach(key => {
+                    const glAccount = key.split('|')[1];
+                    const currAmount = currAccountSum[key] || 0;
+                    const prevAmount = prevAccountSum[key] || 0;
+                    const diff = currAmount - prevAmount;
+                    const currRatio = catCurrTotal > 0 ? (currAmount / catCurrTotal * 100) : 0;
+                    const prevRatio = catPrevTotal > 0 ? (prevAmount / catPrevTotal * 100) : 0;
+                    const subDiffClass = diff >= 0 ? 'diff-positive' : 'diff-negative';
+                    html += `<tr class="sub-row"><td>${glAccount}</td><td class="amount-cell">${formatCurrency(currAmount)}</td><td class="amount-cell">${currRatio.toFixed(1)}%</td><td class="amount-cell">${formatCurrency(prevAmount)}</td><td class="amount-cell">${prevRatio.toFixed(1)}%</td><td class="amount-cell ${subDiffClass}">${formatCurrency(diff)}</td></tr>`;
+                });
+            });
+            
+            const grandDiff = grandTotalCurr - grandTotalPrev;
+            const grandDiffClass = grandDiff >= 0 ? 'diff-positive' : 'diff-negative';
+            html += `</tbody><tfoot><tr><td>합계</td><td class="amount-cell">${formatCurrency(grandTotalCurr)}</td><td class="amount-cell">100.0%</td><td class="amount-cell">${formatCurrency(grandTotalPrev)}</td><td class="amount-cell">100.0%</td><td class="amount-cell ${grandDiffClass}">${formatCurrency(grandDiff)}</td></tr></tfoot></table>`;
+            
+            document.getElementById('detailAccountTable').innerHTML = html;
+        }
+
+        function renderSingleMonthDetailAccountTable(targetMonth) {
+            const monthData = allData.filter(row => String(row.approvalDate).replace(/[^0-9]/g, '').substring(0, 6) === targetMonth);
+            
+            const categorySum = {};
+            const accountSum = {};
+            
+            monthData.forEach(row => {
+                if (row.category === '기타') return;
+                categorySum[row.category] = (categorySum[row.category] || 0) + row.amount;
+                const key = `${row.category}|${row.glAccount}`;
+                accountSum[key] = (accountSum[key] || 0) + row.amount;
+            });
+            
+            const allCategories = Object.keys(categorySum).sort((a, b) => categorySum[b] - categorySum[a]);
+            const allAccounts = Object.keys(accountSum);
+            
+            let html = '<table class="category-table"><thead><tr><th>계정명</th><th style="text-align: right;">사용금액</th><th style="text-align: right;">비율</th></tr></thead><tbody>';
+            
+            let grandTotal = 0;
+            
+            allCategories.forEach(category => {
+                const categoryAccounts = allAccounts.filter(key => key.startsWith(category + '|')).sort((a, b) => accountSum[b] - accountSum[a]);
+                
+                const catTotal = categorySum[category];
+                const catRatio = 100;
+                
+                grandTotal += catTotal;
+                
+                html += `<tr><td><strong>${category}</strong></td><td class="amount-cell"><strong>${formatCurrency(catTotal)}</strong></td><td class="amount-cell"><strong>${catRatio.toFixed(1)}%</strong></td></tr>`;
+                
+                categoryAccounts.forEach(key => {
+                    const glAccount = key.split('|')[1];
+                    const amount = accountSum[key];
+                    const ratio = catTotal > 0 ? (amount / catTotal * 100) : 0;
+                    html += `<tr class="sub-row"><td>${glAccount}</td><td class="amount-cell">${formatCurrency(amount)}</td><td class="amount-cell">${ratio.toFixed(1)}%</td></tr>`;
+                });
+            });
+            
+            html += `</tbody><tfoot><tr><td>합계</td><td class="amount-cell">${formatCurrency(grandTotal)}</td><td class="amount-cell">100.0%</td></tr></tfoot></table>`;
+            
+            document.getElementById('detailAccountTable').innerHTML = html;
+        }
+
+        function renderDetailTable() {
+            const monthFilter = document.getElementById('monthFilter').value;
+            const searchFilter = document.getElementById('tableFilter').value.toLowerCase();
+            let filteredData = allData.filter(row => {
+                let match = true;
+                if (monthFilter && row.approvalDate) {
+                    const dateStr = String(row.approvalDate).replace(/[^0-9]/g, '');
+                    if (dateStr.length >= 6 && dateStr.substring(0, 6) !== monthFilter) match = false;
+                }
+                if (searchFilter) {
+                    const glMatch = (row.glAccount || '').toLowerCase().includes(searchFilter);
+                    const bpMatch = (row.bp || '').toLowerCase() === searchFilter;
+                    if (!glMatch && !bpMatch) match = false;
+                }
+                return match;
+            }).sort((a, b) => b.amount - a.amount);
+            
+            if (!searchFilter) {
+                filteredData = filteredData.slice(0, 10);
+            }
+            const tableContent = document.getElementById('tableContent');
+            if (filteredData.length === 0) {
+                tableContent.innerHTML = '<div class="no-data">조회된 데이터가 없습니다.</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>승인일자</th><th>G/L계정명</th><th>코스트센터</th><th>BP명</th><th>매입금액</th><th>가맹점명</th><th>적요</th></tr></thead><tbody>';
+            filteredData.forEach(row => {
+                const amountClass = row.amount < 0 ? 'negative' : 'positive';
+                const maskedBp = row.bp ? '*'.repeat(row.bp.length) : '-';
+                const maskedMerchant = row.merchant ? '*'.repeat(row.merchant.length) : '-';
+                const maskedDescription = row.description ? '*'.repeat(row.description.length) : '-';
+                html += `<tr><td>${formatDate(row.approvalDate)}</td><td>${row.glAccount || '-'}</td><td>${row.costCenter || '-'}</td><td>${maskedBp}</td><td class="amount ${amountClass}">${formatCurrency(row.amount)}</td><td>${maskedMerchant}</td><td>${maskedDescription}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            tableContent.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
